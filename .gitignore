@@ -1,0 +1,44 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Audio Data & Features (Personal recordings, TTS clips, feature arrays)
+data/
+Code/data/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.npy
+*.npz
+
+# Model Outputs & Exported ONNX Artifacts
+output/
+Code/output/
+*.onnx
+*.pt
+*.pth
+*.bin
+*.ckpt
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# IDE & System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,22 @@
+model_name: sherlock
+target_phrases:
+  - "sherlock"
+  - "hey sherlock"
+  - "hi sherlock"
+  - "hello sherlock"
+
+n_samples: 10000        # Total synthetic clips generated via TTS
+steps: 50000            # Training steps
+target_fp_per_hour: 0.2 # Target false positive rate per hour
+
+model:
+  model_type: conv_attention
+  model_size: small
+
+n_background_samples: 200
+n_background_samples_val: 40
+
+augmentation:
+  background_paths:
+    - ./data/backgrounds
+    - ./data/my-room-noise
