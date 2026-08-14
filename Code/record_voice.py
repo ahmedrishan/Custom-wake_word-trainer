@@ -44,7 +44,7 @@ VOICE_DIR = os.path.join(".", "data", "my-voice")          # flat — required b
 NOISE_DIR = os.path.join(".", "data", "my-room-noise")
 
 PHRASES = ["sherlock", "hey sherlock", "hi sherlock", "hello sherlock"]
-CLIPS_PER_PHRASE = 30
+DEFAULT_TARGET_CLIPS = 50
 
 CONTROLS_LEGEND = (
     "\n  Controls:  [ENTER]/g = record next   r = redo last   p = previous\n"
@@ -77,7 +77,7 @@ def record_voice_clips() -> None:
     print("\n" + "=" * 60)
     print("        PERSONAL VOICE RECORDING ASSISTANT")
     print("=" * 60)
-    print(f"Goal: Record {CLIPS_PER_PHRASE} clips for each phrase, {CLIP_DURATION}s each.")
+    print(f"Goal: Record 20-50+ clips for each phrase (more clips = higher accuracy!).")
     print("Tips: Vary your distance (1-5 ft), speed, volume, and emotion.")
 
     for phrase in PHRASES:
@@ -94,10 +94,10 @@ def record_voice_clips() -> None:
             last_saved_path = os.path.join(VOICE_DIR, last_saved_path)
             print(f"  Found {len(existing)} existing clips, continuing from #{index}.")
 
-        while index <= CLIPS_PER_PHRASE:
+        while True:
             print(CONTROLS_LEGEND)
             choice = input(
-                f"[{phrase}] Clip {index}/{CLIPS_PER_PHRASE} — press a key: "
+                f"[{phrase}] Clip #{index} — press [ENTER] to record (or 'f' when finished with phrase): "
             ).strip().lower()
 
             if choice == "q":
@@ -165,20 +165,24 @@ def record_room_noise() -> None:
 
 
 def main():
-    print("=" * 60)
-    print("       SHERLOCK WAKE-WORD DATA COLLECTION TOOL")
-    print("=" * 60)
-    print("1. Record Voice Clips ('sherlock', 'hey sherlock', etc.)")
-    print("2. Record Room Ambient Noise")
-    print("3. Exit")
+    while True:
+        print("\n" + "=" * 60)
+        print("       SHERLOCK WAKE-WORD DATA COLLECTION TOOL")
+        print("=" * 60)
+        print("1. Record Voice Clips ('sherlock', 'hey sherlock', etc.)")
+        print("2. Record Room Ambient Noise")
+        print("3. Exit")
 
-    choice = input("\nSelect an option (1-3): ").strip()
-    if choice == "1":
-        record_voice_clips()
-    elif choice == "2":
-        record_room_noise()
-    else:
-        print("Exiting.")
+        choice = input("\nSelect an option (1-3): ").strip()
+        if choice == "1":
+            record_voice_clips()
+        elif choice == "2":
+            record_room_noise()
+        elif choice == "3":
+            print("Exiting tool. Good luck with your recordings!")
+            break
+        else:
+            print("Invalid selection. Please choose 1, 2, or 3.")
 
 
 if __name__ == "__main__":
