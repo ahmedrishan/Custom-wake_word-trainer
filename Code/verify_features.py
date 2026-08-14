@@ -4,8 +4,10 @@ import numpy as np
 def verify_dataset_features():
     target_files = [
         "positive_features_train.npy",
+        "positive_features_test.npy",
         "positive_features_val.npy",
         "negative_features_train.npy",
+        "negative_features_test.npy",
         "negative_features_val.npy"
     ]
     

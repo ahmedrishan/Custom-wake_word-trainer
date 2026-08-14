@@ -46,54 +46,76 @@ def extract_and_inject():
     print(f"[+] Found {len(all_wav_files)} total voice clips ({len(new_wav_files)} new clips to inject).")
 
     try:
-        from livekit.wakeword import AudioFeatureExtractor
-        extractor = AudioFeatureExtractor()
+        import soundfile as sf
+        from livekit.wakeword.data.features import (
+            MelSpectrogramFrontend,
+            SpeechEmbedding,
+            get_embedding_model_path,
+            get_mel_model_path,
+            _pad_or_truncate
+        )
+        mel_frontend = MelSpectrogramFrontend(get_mel_model_path())
+        speech_embedding = SpeechEmbedding(get_embedding_model_path())
+        print("[✓] Initialized MelSpectrogramFrontend and SpeechEmbedding feature extractor.")
     except Exception as e:
-        print(f"[*] LiveKit Wakeword AudioFeatureExtractor initialization: {e}")
-        extractor = None
+        print(f"[!] LiveKit Wakeword Feature Extractor initialization error: {e}")
+        mel_frontend = None
+        speech_embedding = None
 
     train_feats_list = []
     val_feats_list = []
     successfully_processed = []
 
-    if extractor:
+    if mel_frontend and speech_embedding:
         for wav_path in new_wav_files:
             try:
-                feats = extractor.extract_features_from_file(wav_path)
-                if feats is not None and len(feats.shape) == 3 and feats.shape[1] == 16 and feats.shape[2] == 96:
-                    if is_validation_clip(wav_path):
-                        val_feats_list.append(feats)
-                    else:
-                        train_feats_list.append(feats)
-                    successfully_processed.append(os.path.abspath(wav_path))
+                audio, sr = sf.read(str(wav_path))
+                if audio.ndim > 1:
+                    audio = audio[:, 0]
+                audio = audio.astype(np.float32)
+
+                mel = mel_frontend(audio)
+                embeddings = speech_embedding.extract_embeddings(mel)
+                feat = _pad_or_truncate(embeddings[0])
+                tensor = np.expand_dims(feat, axis=0)  # shape (1, 16, 96)
+
+                if is_validation_clip(wav_path):
+                    val_feats_list.append(tensor)
+                else:
+                    train_feats_list.append(tensor)
+                successfully_processed.append(os.path.abspath(wav_path))
             except Exception as ex:
                 print(f"[!] Error processing {wav_path}: {ex}")
 
     if train_feats_list or val_feats_list:
-        split_data_map = {
-            "positive_features_train.npy": np.concatenate(train_feats_list, axis=0) if train_feats_list else None,
-            "positive_features_val.npy": np.concatenate(val_feats_list, axis=0) if val_feats_list else None
-        }
+        split_data_map = [
+            (["positive_features_train.npy"], np.concatenate(train_feats_list, axis=0) if train_feats_list else None),
+            (["positive_features_test.npy", "positive_features_val.npy"], np.concatenate(val_feats_list, axis=0) if val_feats_list else None)
+        ]
 
-        for filename, split_data in split_data_map.items():
+        for filenames, split_data in split_data_map:
             if split_data is None:
                 continue
 
-            candidate_paths = [
-                os.path.join(".", "output", "sherlock", filename),
-                os.path.join(".", "data", filename)
-            ]
             injected = False
-            for path in candidate_paths:
-                if os.path.exists(path):
-                    existing_feats = np.load(path)
-                    combined_feats = np.concatenate([existing_feats, split_data], axis=0)
-                    np.save(path, combined_feats)
-                    print(f"[✓] Injected into {path}: Existing {existing_feats.shape[0]} + New Custom {split_data.shape[0]} = Total {combined_feats.shape[0]} clips")
-                    injected = True
-
+            for filename in filenames:
+                candidate_paths = [
+                    os.path.join(".", "output", "sherlock", filename),
+                    os.path.join(".", "data", filename)
+                ]
+                for path in candidate_paths:
+                    if os.path.exists(path):
+                        existing_feats = np.load(path)
+                        combined_feats = np.concatenate([existing_feats, split_data], axis=0)
+                        np.save(path, combined_feats)
+                        print(f"[✓] Injected into {path}: Existing {existing_feats.shape[0]} + New Custom {split_data.shape[0]} = Total {combined_feats.shape[0]} clips")
+                        injected = True
+                        break
+                if injected:
+                    break
             if not injected:
-                fallback_path = os.path.join(".", "data", f"custom_{filename}")
+                primary_name = filenames[0]
+                fallback_path = os.path.join(".", "data", f"custom_{primary_name}")
                 os.makedirs(os.path.dirname(fallback_path), exist_ok=True)
                 if os.path.exists(fallback_path):
                     existing_feats = np.load(fallback_path)
