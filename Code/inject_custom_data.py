@@ -26,7 +26,7 @@ def is_validation_clip(filepath):
     h = hashlib.md5(filename.encode('utf-8')).hexdigest()
     return (int(h, 16) % 100) < 20
 
-def extract_and_inject():
+def extract_and_inject(force_reinject=True):
     voice_dir = os.path.join(".", "data", "my-voice")
     all_wav_files = glob.glob(os.path.join(voice_dir, "**", "*.wav"), recursive=True)
     
@@ -35,15 +35,15 @@ def extract_and_inject():
         print("    Please run 'python record_voice.py' first to record your voice clips.")
         return
         
-    manifest = load_manifest()
-    new_wav_files = [f for f in all_wav_files if os.path.abspath(f) not in manifest]
+    manifest = set() if force_reinject else load_manifest()
+    new_wav_files = [f for f in all_wav_files if force_reinject or os.path.abspath(f) not in manifest]
     
     if not new_wav_files:
         print(f"[✓] Idempotence check: All {len(all_wav_files)} voice clips in {voice_dir} have already been injected.")
         print("    No new clips to process.")
         return
 
-    print(f"[+] Found {len(all_wav_files)} total voice clips ({len(new_wav_files)} new clips to inject).")
+    print(f"[+] Processing ALL {len(all_wav_files)} total voice clips with 8x Oversampling...")
 
     try:
         import soundfile as sf
@@ -78,11 +78,13 @@ def extract_and_inject():
                 embeddings = speech_embedding.extract_embeddings(mel)
                 feat = _pad_or_truncate(embeddings[0])
                 tensor = np.expand_dims(feat, axis=0)  # shape (1, 16, 96)
+                OVERSAMPLE_FACTOR = 8
+                oversampled_tensor = np.tile(tensor, (OVERSAMPLE_FACTOR, 1, 1))
 
                 if is_validation_clip(wav_path):
-                    val_feats_list.append(tensor)
+                    val_feats_list.append(oversampled_tensor)
                 else:
-                    train_feats_list.append(tensor)
+                    train_feats_list.append(oversampled_tensor)
                 successfully_processed.append(os.path.abspath(wav_path))
             except Exception as ex:
                 print(f"[!] Error processing {wav_path}: {ex}")

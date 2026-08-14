@@ -5,6 +5,11 @@ import sys
 import time
 import numpy as np
 
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
+
 def get_onnx_path():
     onnx_path = os.path.join(".", "output", "sherlock", "sherlock.onnx")
     if not os.path.exists(onnx_path):
@@ -18,7 +23,7 @@ def get_onnx_path():
     return os.path.abspath(onnx_path)
 
 
-async def run_live_microphone(onnx_path: str, threshold: float = 0.45, gain_boost: float = 1.8):
+async def run_live_microphone(onnx_path: str, threshold: float = 0.50, gain_boost: float = 2.0):
     try:
         from livekit.wakeword import WakeWordListener, WakeWordModel
     except ImportError as e:
@@ -26,11 +31,11 @@ async def run_live_microphone(onnx_path: str, threshold: float = 0.45, gain_boos
         return
 
     print("\n" + "=" * 70)
-    print("       SHERLOCK LIVE MICROPHONE SENSITIVITY TESTER")
+    print("       SHERLOCK LIVE MICROPHONE HIGH-SENSITIVITY TESTER")
     print("=" * 70)
     print(f"Model Path   : {onnx_path}")
-    print(f"Threshold    : {threshold:.2f} (Sensitivity tuned for laptop mic)")
-    print(f"Software Gain: {gain_boost:.1f}x boost (Amplifies quiet microphone volume)")
+    print(f"Threshold    : {threshold:.2f} (High-sensitivity mode)")
+    print(f"Volume Normal: RMS Auto-Gain Normalization Active (Target RMS: 0.08)")
     print("Target       : 'sherlock', 'hey sherlock', 'hi sherlock', 'hello sherlock'")
     print("Status       : LISTENING LIVE ON MICROPHONE... (Press Ctrl+C to stop)")
     print("=" * 70 + "\n")
@@ -41,14 +46,21 @@ async def run_live_microphone(onnx_path: str, threshold: float = 0.45, gain_boos
         print(f"[!] Failed to initialize WakeWordModel: {ex}")
         return
 
-    # Wrap model predict with software audio gain booster
+    # Wrap model predict with active RMS Normalization
     original_predict = model.predict
 
     def predict_with_gain(audio_chunk: np.ndarray) -> dict[str, float]:
         if audio_chunk.dtype == np.int16:
             audio_chunk = audio_chunk.astype(np.float32) / 32768.0
-        # Apply software gain boost
-        boosted = np.clip(audio_chunk * gain_boost, -1.0, 1.0)
+
+        # Dynamic RMS normalization for speech frames
+        rms = float(np.sqrt(np.mean(audio_chunk ** 2) + 1e-8))
+        if rms > 0.003:  # Active speech frame
+            target_rms = 0.08
+            scale = min(target_rms / rms, 5.0)  # Max 5x amplification
+            audio_chunk = audio_chunk * scale
+
+        boosted = np.clip(audio_chunk, -1.0, 1.0)
         return original_predict(boosted)
 
     model.predict = predict_with_gain
@@ -118,7 +130,6 @@ def run_offline_evaluation(onnx_path: str):
 
     from livekit.wakeword import WakeWordModel
     model = WakeWordModel(models=[onnx_path])
-    import soundfile as sf
 
     print("\n[+] Evaluating Fresh Un-Injected Clips with Sliding Window Pipeline:")
     print("-" * 70)
@@ -155,8 +166,8 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1].lower() in ["--file", "--offline", "-f"]:
         run_offline_evaluation(onnx_path)
     else:
-        threshold = 0.45
-        gain_boost = 1.8
+        threshold = 0.50
+        gain_boost = 2.0
         for i, arg in enumerate(sys.argv[1:]):
             if arg in ["--threshold", "-t"] and i + 2 <= len(sys.argv):
                 threshold = float(sys.argv[i + 2])
