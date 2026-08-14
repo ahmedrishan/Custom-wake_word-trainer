@@ -18,7 +18,7 @@ def get_onnx_path():
     return os.path.abspath(onnx_path)
 
 
-async def run_live_microphone(onnx_path: str, threshold: float = 0.58):
+async def run_live_microphone(onnx_path: str, threshold: float = 0.45, gain_boost: float = 1.8):
     try:
         from livekit.wakeword import WakeWordListener, WakeWordModel
     except ImportError as e:
@@ -26,12 +26,13 @@ async def run_live_microphone(onnx_path: str, threshold: float = 0.58):
         return
 
     print("\n" + "=" * 70)
-    print("       SHERLOCK LIVE MICROPHONE REAL-TIME SANITY CHECK")
+    print("       SHERLOCK LIVE MICROPHONE SENSITIVITY TESTER")
     print("=" * 70)
-    print(f"Model Path  : {onnx_path}")
-    print(f"Threshold   : {threshold:.2f} (Optimal evaluated threshold)")
-    print("Target      : 'sherlock', 'hey sherlock', 'hi sherlock', 'hello sherlock'")
-    print("Status      : LISTENING LIVE ON MICROPHONE... (Press Ctrl+C to stop)")
+    print(f"Model Path   : {onnx_path}")
+    print(f"Threshold    : {threshold:.2f} (Sensitivity tuned for laptop mic)")
+    print(f"Software Gain: {gain_boost:.1f}x boost (Amplifies quiet microphone volume)")
+    print("Target       : 'sherlock', 'hey sherlock', 'hi sherlock', 'hello sherlock'")
+    print("Status       : LISTENING LIVE ON MICROPHONE... (Press Ctrl+C to stop)")
     print("=" * 70 + "\n")
 
     try:
@@ -39,6 +40,18 @@ async def run_live_microphone(onnx_path: str, threshold: float = 0.58):
     except Exception as ex:
         print(f"[!] Failed to initialize WakeWordModel: {ex}")
         return
+
+    # Wrap model predict with software audio gain booster
+    original_predict = model.predict
+
+    def predict_with_gain(audio_chunk: np.ndarray) -> dict[str, float]:
+        if audio_chunk.dtype == np.int16:
+            audio_chunk = audio_chunk.astype(np.float32) / 32768.0
+        # Apply software gain boost
+        boosted = np.clip(audio_chunk * gain_boost, -1.0, 1.0)
+        return original_predict(boosted)
+
+    model.predict = predict_with_gain
 
     detection_count = 0
     try:
@@ -52,6 +65,12 @@ async def run_live_microphone(onnx_path: str, threshold: float = 0.58):
     except (KeyboardInterrupt, asyncio.CancelledError):
         print("\n" + "=" * 70)
         print(f"[+] Stopped live microphone listening. Total detections logged: {detection_count}")
+        print("=" * 70)
+    except OSError as os_err:
+        print("\n" + "=" * 70)
+        print(f"[!] Audio input device disconnected or changed: {os_err}")
+        print(f"[+] Total live detections before disconnect: {detection_count}")
+        print("    Re-plug your microphone and run the script again to resume listening.")
         print("=" * 70)
     except Exception as e:
         print(f"\n[!] Live listening error: {e}")
@@ -136,8 +155,16 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1].lower() in ["--file", "--offline", "-f"]:
         run_offline_evaluation(onnx_path)
     else:
+        threshold = 0.45
+        gain_boost = 1.8
+        for i, arg in enumerate(sys.argv[1:]):
+            if arg in ["--threshold", "-t"] and i + 2 <= len(sys.argv):
+                threshold = float(sys.argv[i + 2])
+            elif arg in ["--gain", "-g"] and i + 2 <= len(sys.argv):
+                gain_boost = float(sys.argv[i + 2])
+
         try:
-            asyncio.run(run_live_microphone(onnx_path, threshold=0.58))
+            asyncio.run(run_live_microphone(onnx_path, threshold=threshold, gain_boost=gain_boost))
         except KeyboardInterrupt:
             pass
 
